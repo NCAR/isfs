@@ -1,4 +1,4 @@
 [submodule "projects"]
 	path = projects
-	url = ../public-field-projects
+	url = ../isfs-field-projects
 	sparsecheckout = true
