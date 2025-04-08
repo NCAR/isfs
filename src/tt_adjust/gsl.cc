@@ -19,7 +19,7 @@
 
 void gsl_fit_init(struct gsl_fit_sums& sums)
 {
-    memset(&sums,0,sizeof(sums));
+    sums.zero();
 }
 
 void gsl_fit_linear_add_point(double x, double y,struct gsl_fit_sums& sums)

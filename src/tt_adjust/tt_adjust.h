@@ -471,7 +471,7 @@ private:
     {
     public:
         HeaderSrc(const nidas::core::SampleInputHeader& header) : _header(header) {}
-        void sendHeader(nidas::core::dsm_time_t thead,nidas::core::SampleOutput* out) throw(nidas::util::IOException)
+        void sendHeader(nidas::core::dsm_time_t thead,nidas::core::SampleOutput* out)
         {
             _header.write(out);
         }
