@@ -1,0 +1,24 @@
+# Run nidas_udp_relay with a header for a specific project.  Hopefully
+# it is straightforward to set the project with an override file, but for
+# the project is hardcoded.
+#
+# This is intended to run as a user service for the isfs user on eol-rt-data.
+# It does not need a ConditionHost because the isfs home directory is local
+# to eol-rt-data.  It can be linked into the systemd user path and enabled.
+[Unit]
+Description=NIDAS UDP Relay
+After=network.target
+
+[Service]
+Environment=PROJECT=MARSHALL2023 LPROJECT=marshall2023 ISFS=%h/isfs
+# Echo header path to get variable substitution after HEADER substituted.
+Environment=HEADER="-h `echo $ISFS/projects/$PROJECT/ISFS/config/${LPROJECT}-header.txt`"
+# Need to exec with bash to get environment variable substitution.
+ExecStart=/bin/bash -c 'exec /opt/nidas/bin/nidas_udp_relay $HEADER -u 30010'
+TimeoutStartSec=5
+TimeoutStopSec=10
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
