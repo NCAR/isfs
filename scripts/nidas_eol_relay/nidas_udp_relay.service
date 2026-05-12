@@ -12,11 +12,11 @@ After=network.target
 [Service]
 Environment=HEADER="-h %h/isfs/projects/MARSHALL2023/ISFS/config/marshall2023-header.txt"
 # Need to exec with bash to get environment variable substitution.
-ExecStart=/bin/bash -c 'exec /opt/nidas/bin/nidas_udp_relay $HEADER -u 30010'
+ExecStart=/bin/bash -c 'exec /opt/nidas/bin/nidas_udp_relay -d -l info $HEADER -u 30010'
 TimeoutStartSec=5
 TimeoutStopSec=10
 Restart=on-failure
 RestartSec=5
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
