@@ -248,8 +248,6 @@ declare -A volgroups
 
 for key in ${!backup[*]}; do
 
-    trap - EXIT
-
     echo "tar backup starting: $key, $(date)"
 
     targ=
@@ -295,7 +293,7 @@ for key in ${!backup[*]}; do
         # echo "snapdev=$snapdev"
         # unmount and remove snapshot if it exists
         findmnt $snapdev > /dev/null && umount -v $snapdev
-        lvs $snapdev > /dev/null 2>&1 && lvremove --force $snapdev
+        lvs $snapdev > /dev/null 2>&1 && lvremove -y $snapdev
         vgfree=$(vgs -o vg_free --no-headings --units=M --nosuffix $vg)
         echo "Free space on volume group $vg: ${vgfree}M"
         if [ ${vgfree%.*} -lt $minfreeM ]; then
@@ -309,6 +307,7 @@ for key in ${!backup[*]}; do
         diskdevs[$diskdev]=$diskdev
         volgroups[$vg]=$vg
     else
+        # Not an LVM volume
         diskdev=$(lsblk --noheadings --output pkname $mntdev | head -n 1)
         diskdevs[$diskdev]=$diskdev
     fi
@@ -326,12 +325,12 @@ for key in ${!backup[*]}; do
             # To do this on a root file system, you'll have to boot from
             # an image on an external disk, since otherwise you can't
             # de-activate the root logical volume that is in use.
-            # Remove any leftover snapshot stuff and fedora-root from
+            # Remove any leftover snapshot stuff and fedora_vg-root_lv from
             # the device mapper:
-            #   lvremove /dev/fedora/root_snapshot
-            #   dmsetup remove fedora-root_snapshot-cow
-            #   dmsetup remove fedora-root
-            # vgdisplay -v should show the fedora/root logical volume as
+            #   lvremove /dev/fedora_vg/root_lv_snapshot
+            #   dmsetup remove fedora_vg-root_lv_snapshot-cow
+            #   dmsetup remove fedora_vg-root_lv
+            # vgdisplay -v should show the fedora_vg/root_lv logical volume as
             # not active. Then activate with:
             #   vgchange -ay
             # see http://plosquare.blogspot.com/2010/01/lvm2-snapshots-device-mapper-create.html
@@ -344,15 +343,21 @@ for key in ${!backup[*]}; do
                 lvcreate --snapshot -l100%FREE --permission rw -n $snaplv $mntdev
             fi
         fi
-        trap "{ lvremove --force $snapdev; }" EXIT
+        exitcmds="lvremove -y $snapdev;"
+        trap "$exitcmds" EXIT
         tmpdir=$(mktemp -d /tmp/${key}_XXXXXX)
-        trap "{ rm -rf $tmpdir; lvremove --force $snapdev; }" EXIT
+        exitcmds="rm -rf $tmpdir; $exitcmds"
+        trap "$exitcmds" EXIT
+
         mntpath=${tmpdir}${backup[$key]}
         # echo "mntpath=$mntpath"
         [ -d $mntpath ] || mkdir -p $mntpath
         findmnt $snapdev > /dev/null && umount -v $snapdev
         mount -v $snapdev -o ro $mntpath
-        trap "{ sleep 1; umount -v $mntpath; rm -rf $tmpdir; lvremove --force $snapdev; }" EXIT
+
+        exitcmds="sleep 1; umount -v $mntpath; $exitcmds"
+        trap "$exitcmds" EXIT
+
         # remove leading slash
         bkdir=${backup[$key]#/}
         if [ -z "$bkdir" ]; then
@@ -362,6 +367,7 @@ for key in ${!backup[*]}; do
         fi
         cddir=$tmpdir
     else
+        # Not an LVM volume
         # remove leading slash
         bkdir=${backup[$key]#/}
         [ -z "$bkdir" ] && bkdir=/
@@ -369,29 +375,29 @@ for key in ${!backup[*]}; do
     fi
 
     cd $cddir
-    trap "{ cd -; sleep 1; umount -v $mntpath; rm -rf $tmpdir; lvremove --force $snapdev; }" EXIT
+    exitcmds="cd -; $exitcmds"
+    trap "$exitcmds" EXIT
 
     echo "PWD=$PWD"
     echo "backup=$bkdir"
     echo "tarball=$tarball"
     echo "tarinc=$tarinc"
     if ! $debug; then
-        time tar --create --one-file-system --auto-compress \
+        if ! time tar --create --one-file-system --auto-compress \
             --selinux --no-check-device --sparse $targ \
+            --warning=no-file-ignored \
             --listed-incremental=$tarinc \
-            --file=$tarball \
-            $bkdir
+            --file=$tarball $bkdir; then
+            
+            echo "$0 FAILURE!: tar error, status=$?"
+            exit 1
+        fi
+
     fi
-    cd - > /dev/null
-    if $snapshot; then
-        sleep 1
-        trap "{ rm -rf $tmpdir; lvremove --force $snapdev; }" EXIT
-        umount -v $mntpath
-        trap "{ lvremove --force $snapdev; }" EXIT
-        rm -rf $tmpdir
-        trap - EXIT
-        lvremove --force $snapdev;
-    fi
+    eval $exitcmds
+    exitcmds=
+    trap - EXIT
+
     ls -l $tarball
     echo "tar backup finished: $key, $(date)"
     echo ""
@@ -410,3 +416,4 @@ if ! $incremental; then
         vgcfgbackup -f $dest/${vg}_$curdate.conf $vg
     done
 fi
+echo "$0 success"
